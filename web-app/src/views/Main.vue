@@ -23,12 +23,12 @@
         </template>
         <b-form-input v-model="ssid"></b-form-input>
         <template v-slot:append>
-          <b-dropdown right text="Scan" variant="">
+          <b-dropdown @toggle="scanNetworks" right text="Scan" variant="">
             <b-dropdown-item v-on:click="setSsid(ssid)" v-for="ssid in ssidList" :key="ssid">{{ ssid }}</b-dropdown-item>
             <!-- <b-dropdown-item>GiosWifi</b-dropdown-item>
             <b-dropdown-item>113</b-dropdown-item> -->
             <div class="text-center">
-              <b-spinner type="grow" variant="primary" label="Text Centered"></b-spinner>
+              <b-spinner v-if="isScanning" type="grow" variant="primary" label="Text Centered"></b-spinner>
             </div>
           </b-dropdown>
         </template>
@@ -38,11 +38,11 @@
         <template v-slot:prepend>
           <b-input-group-text class="input-pass-label">Password</b-input-group-text>
         </template>
-        <b-form-input></b-form-input>
+        <b-form-input :type="passType" v-model="pass"></b-form-input>
         <template v-slot:append>
           <b-button variant="" v-on:click="togglePassField">
-            <b-icon v-if="togglePass" icon="eye"></b-icon>
-            <b-icon v-if="!togglePass" icon="eye-slash"></b-icon>
+            <b-icon v-if="togglePass" icon="eye-slash"></b-icon>
+            <b-icon v-if="!togglePass" icon="eye"></b-icon>
           </b-button>
           
         </template>
@@ -59,21 +59,21 @@
         <template v-slot:prepend>
           <b-input-group-text class="input-pass-label">IP Addr</b-input-group-text>
         </template>
-        <b-form-input></b-form-input>
+        <b-form-input v-model="staticIp"></b-form-input>
       </b-input-group>
 
       <b-input-group class="input-netmask">
         <template v-slot:prepend>
           <b-input-group-text class="input-pass-label">Netmask</b-input-group-text>
         </template>
-        <b-form-input></b-form-input>
+        <b-form-input v-model="netmask"></b-form-input>
       </b-input-group>
 
       <b-input-group class="input-gateway">
         <template v-slot:prepend>
           <b-input-group-text class="input-pass-label">Gateway</b-input-group-text>
         </template>
-        <b-form-input></b-form-input>
+        <b-form-input v-model="gateway"></b-form-input>
       </b-input-group>
       </div>
 
@@ -103,21 +103,29 @@
 
     </b-container>
 
-    <b-modal size="xsm" id="modal-test-wifi" centered hide-footer hide-header>
+
+    <b-modal @ok="modalTestOk" @cancel="modalTestCancel" size="xsm" id="modal-test-wifi" centered hide-header>
       <!-- <template v-slot:modal-title>
         <p style="font-size: 15px;">Testing WiFi Network</p>
       </template> -->
       <div class="d-block text-center">
-        <p v-if="!isTestingWifi">Status message</p>
+        <p v-if="!isTestingWifi">This will test WiFi connection</p>
         <div class="text-center">
           <b-spinner style="width: 3rem; height: 3rem;" v-if="isTestingWifi" type="grow" variant="primary" label="Text Centered"></b-spinner>
         </div>
       </div>
-      <b-button v-if="isTestingWifi" class="mt-1" block @click="$bvModal.hide('modal-test-wifi')">Cancel</b-button>
-      <b-button v-if="isWifiOk" class="mt-1" block @click="$bvModal.hide('modal-test-wifi')">Ok</b-button>
+      <template v-slot:modal-footer="{ ok, cancel }">
+        <!-- Emulate built in modal footer ok and cancel button actions -->
+        <b-button size="sm" variant="success" @click="ok()">
+          OK
+        </b-button>
+        <b-button size="sm" variant="danger" @click="cancel()">
+          Cancel
+        </b-button>
+      </template>
     </b-modal>
 
-    <b-modal size="xsm" id="modal-erase" centered hide-header>
+    <b-modal @ok="modalEraseOk" @cancel="modalEraseCancel" size="xsm" id="modal-erase" centered hide-header>
       <!-- <template v-slot:modal-title>
         <p style="font-size: 15px;">Testing WiFi Network</p>
       </template> -->
@@ -138,7 +146,7 @@
       </template>
     </b-modal>
 
-    <b-modal size="xsm" id="modal-start" centered hide-header>
+    <b-modal @ok="modalStartDeviceOk" @cancel="modalStartDeviceCancel" size="xsm" id="modal-start" centered hide-header>
       <!-- <template v-slot:modal-title>
         <p style="font-size: 15px;">Testing WiFi Network</p>
       </template> -->
@@ -159,6 +167,19 @@
       </template>
     </b-modal>
 
+    <b-modal size="xsm" id="modal-running-task" centered hide-footer hide-header no-close-on-backdrop>
+      <!-- <template v-slot:modal-title>
+        <p style="font-size: 15px;">Testing WiFi Network</p>
+      </template> -->
+      <div class="d-block text-center">
+        <p v-modal="taskStatus">{{ taskStatus }}</p>
+        <div class="text-center">
+          <b-spinner style="width: 3rem; height: 3rem;" v-if="isTaskRunning" type="grow" variant="primary" label="Text Centered"></b-spinner>
+        </div>
+      </div>
+      <b-button v-if="!isTaskRunning" class="mt-1" block>Ok</b-button>
+    </b-modal>
+
     
   </div>
 </template>
@@ -169,69 +190,147 @@
 
 export default {
   name: "Main",
+  components: {},
+  data() {
+    return {
+      socket: null,
+      togglePass: false,
+      toggleFixedIp: false,
+      isDeviceConnected: false,
+      isScanning: true,
+      isTestingWifi: false,
+      isErasing: false,
+      isWifiOk: false,
+      isTaskRunning: false,
+      ssid: "",
+      pass: "",
+      staticIp: "",
+      netmask: "",
+      gateway: "",
+      passType: "password",
+      ssidList: "",
+      macAddress: "",
+      taskStatus: "",
+    };
+  },
   mounted() {
     console.log("page mounted");
-    const socket = new WebSocket('ws://192.168.4.1:81/', ['arduino']);
-    socket.binaryType = 'arraybuffer';
+    this.socket = new WebSocket('ws://192.168.4.1:81/', ['arduino']);
+    this.socket.binaryType = 'arraybuffer';
 
-    socket.onopen = function () {
+    this.socket.onopen = function () {
       console.log('Connect ' + new Date());
-      socketSendMessageInfo("getConnectStatus");
+      this.socket.send("getMacAddr");
+      //socketSendMessageInfo("getConnectStatus");
     };   
 
-    socket.onclose = function(e) {
+    this.socket.onclose = function(e) {
       console.log('Socket is closed', e.reason);
     }
 
-    socket.onerror = function(err) {
+    this.socket.onerror = function(err) {
       console.error('Socket encountered error: ', err.message, 'Closing socket');
-      socket.close();
+      this.socket.close();
     }
 
-    socket.onmessage = function (e) {
+    this.socket.onmessage = function (e) {
       console.log('Server: ', e.data);
       var jsonData = JSON.parse(e.data);
       console.log(Object.keys(jsonData)[0]);
       switch (Object.keys(jsonData)[0]) {
         case "ssidArray":
+          this.isScanning = false;
+          this.ssidList = jsonData["ssidArray"];
+          break;
+        case "macAddrress":
+          this.isDeviceConnected = true;
+          this.macAddress = jsonData["macAddress"];          
+          break;
+        case "wifiTestOk":
+          this.isWifiOk = true;
+          this.isTestingWifi = false;
+          this.isTaskRunning = false;
+          this.taskStatus = "WiFi OK";
+          break;
+        case "wifiTestError":
+          this.isWifiOk = false;
+          this.isTestingWifi = false;
+          this.isTaskRunning = false;
+          this.taskStatus = jsonData["error"];
+          break;
+        case "eraseDataOk":
+          this.is = true;
+          this.isTaskRunning = false;
+          this.taskStatus = "Data erased";
           break;
       }
     }
-
-    function socketSendMessageInfo(message) {
-      var JsonData = {
-        "messageInfo": {
-          "message": message,
-          "size": null
-        }
-      }
-      JsonData.messageInfo.size = JsonData.messageInfo.message.length.toString();
-      socket.send(JSON.stringify(JsonData));
-    }
-
-  },
-  components: {},
-  data() {
-    return {
-      togglePass: false,
-      toggleFixedIp: false,
-      isDeviceConnected: true,
-      isSearchingWifi: true,
-      isTestingWifi: true,
-      isWifiOk: false,
-      ssid: "",
-      ssidList: ["GiosWifi", "113", "Directa"],
-    };
   },
   methods: {
     togglePassField: function() {
       this.togglePass = !this.togglePass;
       this.isDeviceConnected = !this.isDeviceConnected;
+      if(!this.togglePass) this.passType = "password";
+      else this.passType = "text";
+      console.log(this.passType);      
     },
     setSsid: function(ssid) {
       console.log(ssid);
       this.ssid = ssid;
     },
+    modalTestOk: function(bvModalEvt) {
+      console.log(bvModalEvt.trigger);      
+      this.$bvModal.show('modal-running-task');
+      this.taskStatus = "Testing WiFi connection...";
+      this.isTaskRunning = true;
+      this.isTestingWifi = true;
+      var JsonData = {
+        "wifiParameters": {
+          "ssid": this.ssid,
+          "password": this.pass,
+          "isStaticIp": this.toggleFixedIp,
+          "staticIp": this.staticIp,
+          "netmask": this.netmask,
+          "gateway": this.gateway,
+        }
+      }
+      console.log(JsonData);
+      //this.socket.send(JSON.stringify(JsonData));
+    },
+    modalTestCancel: function(bvModalEvt) {
+      console.log(bvModalEvt.trigger);
+      this.isTaskRunning = false;
+      this.isTestingWifi = false; 
+    },
+    modalEraseOk: function(bvModalEvt) {
+      this.$bvModal.show('modal-running-task');
+      this.taskStatus = "Erasing current WiFi data...";
+      this.isTaskRunning = true;
+      console.log(bvModalEvt.trigger);      
+      //this.socket.send("eraseConfig");
+      this.isErasing = true;
+    },
+    modalEraseCancel: function(bvModalEvt) {
+      console.log(bvModalEvt.trigger);
+      this.isTaskRunning = false;
+    },
+    modalStartDeviceOk: function(bvModalEvt) {
+      console.log(bvModalEvt.trigger);
+      this.$bvModal.show('modal-running-task');
+      this.taskStatus = "Starting device...";
+      this.isTaskRunning = true;
+      //this.socket.send("startDevice");
+    },
+    modalStartDeviceCancel: function(bvModalEvt) {
+      console.log(bvModalEvt.trigger);
+      this.isTaskRunning = false;
+    },
+    scanNetworks: function() {
+      console.log("scanNetworks");      
+      this.isScanning = true;
+      //this.socket.send("scanNetworks");
+      // this.ssidList = ;
+    }
   }
 };
 </script>
