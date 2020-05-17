@@ -13,7 +13,7 @@
            ></div>
           <p v-if="isDeviceConnected" style="margin-top: 0px; margin-bottom: 0px; display: inline-block; padding-left: 10px">Connected</p>
           <p v-else style="margin-top: 0px; margin-bottom: 0px; display: inline-block; padding-left: 10px">Not connected</p>
-          <p v-if="isDeviceConnected" style="margin-top: 0px; margin-bottom: 0px; display: inline-block; padding-left: 10px">00:0a:95:9d:68:16</p>
+          <p v-if="isDeviceConnected" style="margin-top: 0px; margin-bottom: 0px; display: inline-block; padding-left: 10px">{{ macAddress }}</p>
         </b-col>
       </b-row>
 
@@ -23,7 +23,7 @@
         </template>
         <b-form-input v-model="ssid"></b-form-input>
         <template v-slot:append>
-          <b-dropdown @toggle="scanNetworks" right text="Scan" variant="">
+          <b-dropdown @show="scanNetworks" right text="Scan" variant="">
             <b-dropdown-item v-on:click="setSsid(ssid)" v-for="ssid in ssidList" :key="ssid">{{ ssid }}</b-dropdown-item>
             <!-- <b-dropdown-item>GiosWifi</b-dropdown-item>
             <b-dropdown-item>113</b-dropdown-item> -->
@@ -34,11 +34,11 @@
         </template>
       </b-input-group>
 
-      <b-input-group class="input-pass">
+      <b-input-group class="input-password">
         <template v-slot:prepend>
-          <b-input-group-text class="input-pass-label">Password</b-input-group-text>
+          <b-input-group-text>Password</b-input-group-text>
         </template>
-        <b-form-input :type="passType" v-model="pass"></b-form-input>
+        <b-form-input :type="passType" v-model="password"></b-form-input>
         <template v-slot:append>
           <b-button variant="" v-on:click="togglePassField">
             <b-icon v-if="togglePass" icon="eye-slash"></b-icon>
@@ -48,34 +48,34 @@
         </template>
       </b-input-group>
 
-      <b-form-checkbox style="position: left; padding-bottom: 10px" v-model="toggleFixedIp" name="check-button" switch size="lg">
+      <b-form-checkbox style="position: left; padding-bottom: 10px" v-model="isStaticIp" name="check-button" switch size="lg">
         Static IP
       </b-form-checkbox>
 
       <transition name="fade">
         
-        <div v-if="toggleFixedIp">
-        <b-input-group class="input-ipaddress">
-        <template v-slot:prepend>
-          <b-input-group-text class="input-pass-label">IP Addr</b-input-group-text>
-        </template>
-        <b-form-input v-model="staticIp"></b-form-input>
-      </b-input-group>
+        <div v-if="isStaticIp">
+          <b-input-group class="input-ipaddress">
+            <template v-slot:prepend>
+              <b-input-group-text>IP Addr</b-input-group-text>
+            </template>
+            <b-form-input v-model="staticIp"></b-form-input>
+          </b-input-group>
 
-      <b-input-group class="input-netmask">
-        <template v-slot:prepend>
-          <b-input-group-text class="input-pass-label">Netmask</b-input-group-text>
-        </template>
-        <b-form-input v-model="netmask"></b-form-input>
-      </b-input-group>
+          <b-input-group class="input-netmask">
+            <template v-slot:prepend>
+              <b-input-group-text>Netmask</b-input-group-text>
+            </template>
+            <b-form-input v-model="netmask"></b-form-input>
+          </b-input-group>
 
-      <b-input-group class="input-gateway">
-        <template v-slot:prepend>
-          <b-input-group-text class="input-pass-label">Gateway</b-input-group-text>
-        </template>
-        <b-form-input v-model="gateway"></b-form-input>
-      </b-input-group>
-      </div>
+          <b-input-group class="input-gateway">
+            <template v-slot:prepend>
+              <b-input-group-text>Gateway</b-input-group-text>
+            </template>
+            <b-form-input v-model="gateway"></b-form-input>
+          </b-input-group>
+        </div>
 
       </transition>
 
@@ -177,7 +177,7 @@
           <b-spinner style="width: 3rem; height: 3rem;" v-if="isTaskRunning" type="grow" variant="primary" label="Text Centered"></b-spinner>
         </div>
       </div>
-      <b-button v-if="!isTaskRunning" class="mt-1" block>Ok</b-button>
+      <b-button v-if="!isTaskRunning" @click="$bvModal.hide('modal-running-task')" class="mt-1" block>Ok</b-button>
     </b-modal>
 
     
@@ -195,15 +195,18 @@ export default {
     return {
       socket: null,
       togglePass: false,
-      toggleFixedIp: false,
+      isStaticIp: false,
       isDeviceConnected: false,
       isScanning: true,
       isTestingWifi: false,
       isErasing: false,
       isWifiOk: false,
       isTaskRunning: false,
+      isWebSocketAlive: false,
+      lastPongTime: "",
+      timeNow: "",
       ssid: "",
-      pass: "",
+      password: "",
       staticIp: "",
       netmask: "",
       gateway: "",
@@ -214,43 +217,72 @@ export default {
     };
   },
   mounted() {
-    console.log("page mounted");
-    this.socket = new WebSocket('ws://192.168.4.1:81/', ['arduino']);
-    this.socket.binaryType = 'arraybuffer';
-
-    this.socket.onopen = function () {
-      console.log('Connect ' + new Date());
-      this.socket.send("getMacAddr");
-      //socketSendMessageInfo("getConnectStatus");
-    };   
-
-    this.socket.onclose = function(e) {
-      console.log('Socket is closed', e.reason);
+    console.log(this.$socket.url);    
+    //------ WEBSOCKET ON OPEN ------------
+    this.$options.sockets.onopen = (e) => {
+      console.log("Server: " + e.type);
+      //this.$socket.send('getMacAddress');
+      //this.$socket.send("ping"); 
+      this.isWebSocketAlive = true;       
     }
-
-    this.socket.onerror = function(err) {
-      console.error('Socket encountered error: ', err.message, 'Closing socket');
-      this.socket.close();
+    //------ WEBSOCKET ON CLOSE ------------
+    this.$options.sockets.onclose = (e) => {
+      console.log("Server: " + e);
+      //this.$socket.send('getMacAddress');
+      this.isDeviceConnected = false;
+      this.macAddress = "";
+      this.isWebSocketAlive = false;       
     }
-
-    this.socket.onmessage = function (e) {
+    //------ WEBSOCKET ONMESSAGE EVENTS ------------
+    this.$options.sockets.onmessage = (e) => {
+      //console.log(e)
       console.log('Server: ', e.data);
       var jsonData = JSON.parse(e.data);
       console.log(Object.keys(jsonData)[0]);
       switch (Object.keys(jsonData)[0]) {
-        case "ssidArray":
-          this.isScanning = false;
-          this.ssidList = jsonData["ssidArray"];
-          break;
-        case "macAddrress":
+        case "deviceInfo":
+          console.log(jsonData["deviceInfo"]);
+          this.macAddress = jsonData["deviceInfo"]["macAddress"];
+          this.ssid = jsonData["deviceInfo"]["ssid"];
+          this.password = jsonData["deviceInfo"]["password"];
+          this.isStaticIp = jsonData["deviceInfo"]["isStaticIp"];
+          this.staticIp = jsonData["deviceInfo"]["staticIp"];
+          this.netmask = jsonData["deviceInfo"]["netmask"];
+          this.gateway = jsonData["deviceInfo"]["gateway"];
           this.isDeviceConnected = true;
+          this.isWebSocketAlive = true;
+          this.lastPongTime = Date.now();
+          break;
+        case "ssidArray":
+          console.log(jsonData["ssidArray"]);
+          this.ssidList = jsonData["ssidArray"];
+          this.isScanning = false;
+          this.isWebSocketAlive = true;
+          this.isDeviceConnected = true;
+          break;
+        case "macAddress":
+          this.isDeviceConnected = true;
+          this.isWebSocketAlive = true;
+          this.lastPongTime = Date.now();
           this.macAddress = jsonData["macAddress"];          
           break;
         case "wifiTestOk":
-          this.isWifiOk = true;
+          this.isWifiOk = jsonData["wifiTestOk"];
           this.isTestingWifi = false;
           this.isTaskRunning = false;
           this.taskStatus = "WiFi OK";
+          break;
+        case "eraseOk":
+          this.isWifiOk = jsonData["eraseOk"];
+          this.isErasing = false;
+          this.isTaskRunning = false;
+          this.taskStatus = "Erase OK";
+          this.ssid = "";
+          this.password = "";
+          this.isStaticIp = false;
+          this.staticIp = "";
+          this.netmask = "";
+          this.gateway = "";
           break;
         case "wifiTestError":
           this.isWifiOk = false;
@@ -259,17 +291,36 @@ export default {
           this.taskStatus = jsonData["error"];
           break;
         case "eraseDataOk":
-          this.is = true;
+          //this.is = true;
           this.isTaskRunning = false;
           this.taskStatus = "Data erased";
           break;
+        case "pong":
+          this.isWebSocketAlive = jsonData["pong"];
+          this.lastPongTime = Date.now();
+          break;
       }
     }
+    window.setInterval(() => {
+      console.log("checking connection");
+      this.$socket.send("ping");
+    }, 3000)
+    window.setInterval(() => {
+      console.log("checking last pong time");
+      this.timeNow = Date.now();
+      console.log("Last pong time: "+ this.lastPongTime);
+      console.log("Epoch time: " + this.timeNow);      
+      if(this.timeNow - this.lastPongTime > 6000){
+        console.log("LAST PONG TIME GREATER");
+        this.isDeviceConnected = false;
+        this.isWebSocketAlive = false;
+        this.macAddress = "";
+      }     
+    }, 200)
   },
   methods: {
     togglePassField: function() {
       this.togglePass = !this.togglePass;
-      this.isDeviceConnected = !this.isDeviceConnected;
       if(!this.togglePass) this.passType = "password";
       else this.passType = "text";
       console.log(this.passType);      
@@ -287,15 +338,15 @@ export default {
       var JsonData = {
         "wifiParameters": {
           "ssid": this.ssid,
-          "password": this.pass,
-          "isStaticIp": this.toggleFixedIp,
+          "password": this.password,
+          "isStaticIp": this.isStaticIp,
           "staticIp": this.staticIp,
           "netmask": this.netmask,
           "gateway": this.gateway,
         }
       }
       console.log(JsonData);
-      //this.socket.send(JSON.stringify(JsonData));
+      this.$socket.send(JSON.stringify(JsonData));
     },
     modalTestCancel: function(bvModalEvt) {
       console.log(bvModalEvt.trigger);
@@ -307,7 +358,7 @@ export default {
       this.taskStatus = "Erasing current WiFi data...";
       this.isTaskRunning = true;
       console.log(bvModalEvt.trigger);      
-      //this.socket.send("eraseConfig");
+      this.$socket.send("eraseConfig");
       this.isErasing = true;
     },
     modalEraseCancel: function(bvModalEvt) {
@@ -326,11 +377,66 @@ export default {
       this.isTaskRunning = false;
     },
     scanNetworks: function() {
-      console.log("scanNetworks");      
+      console.log("scanNetworks");
+      this.ssidList = "";      
       this.isScanning = true;
       //this.socket.send("scanNetworks");
+      this.$socket.send('scanNetworks');
       // this.ssidList = ;
-    }
+    },
+    // connectWebSocket: function() {
+    //   this.socket = new WebSocket('ws://192.168.0.11:9090/', ['arduino']);
+    //   console.log("new websocket");
+    //   this.socket.binaryType = 'arraybuffer';
+
+    //   this.socket.onopen = function () {
+    //     console.log('Connect ' + new Date());
+    //     this.socket.send("getMacAddr");
+    //     //socketSendMessageInfo("getConnectStatus");
+    //   };   
+
+    //   this.socket.onclose = function(e) {
+    //     console.log('Socket is closed', e.reason);
+    //   }
+
+    //   this.socket.onerror = function(err) {
+    //     console.error('Socket encountered error: ', err.message, 'Closing socket');
+    //     this.socket.close();
+    //   }
+
+    //   this.socket.onmessage = function (e) {
+    //     console.log('Server: ', e.data);
+    //     var jsonData = JSON.parse(e.data);
+    //     console.log(Object.keys(jsonData)[0]);
+    //     switch (Object.keys(jsonData)[0]) {
+    //       case "ssidArray":
+    //         this.isScanning = false;
+    //         this.ssidList = jsonData["ssidArray"];
+    //         break;
+    //       case "macAddress":
+    //         this.isDeviceConnected = true;
+    //         this.macAddress = jsonData["macAddress"];          
+    //         break;
+    //       case "wifiTestOk":
+    //         this.isWifiOk = true;
+    //         this.isTestingWifi = false;
+    //         this.isTaskRunning = false;
+    //         this.taskStatus = "WiFi OK";
+    //         break;
+    //       case "wifiTestError":
+    //         this.isWifiOk = false;
+    //         this.isTestingWifi = false;
+    //         this.isTaskRunning = false;
+    //         this.taskStatus = jsonData["error"];
+    //         break;
+    //       case "eraseDataOk":
+    //         this.is = true;
+    //         this.isTaskRunning = false;
+    //         this.taskStatus = "Data erased";
+    //         break;
+    //     }
+    //   }
+    // }
   }
 };
 </script>
@@ -348,7 +454,7 @@ export default {
   max-width: 21rem;
   margin: 0 auto;
 }
-.input-pass {
+.input-password {
   padding-bottom: 10px;
   max-width: 21rem;
   margin: 0 auto;
