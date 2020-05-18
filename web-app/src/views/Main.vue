@@ -84,14 +84,17 @@
 
       <b-row no-gutters style="position: absolute; bottom: 20px; width: 90%; margin: 0 auto;">
         <b-col>
+          <b-button @click="$bvModal.show('modal-save')" style="min-width: 5rem">Save</b-button>
+        </b-col>
+        <b-col>
           <b-button @click="$bvModal.show('modal-test-wifi')" style="min-width: 5rem">Test WiFi</b-button>
         </b-col>
         <b-col>
           <b-button @click="$bvModal.show('modal-erase')" style="min-width: 5rem">Erase</b-button>
-          </b-col>
+        </b-col>
         <b-col>
           <b-button @click="$bvModal.show('modal-start')" style="min-width: 5rem">Start</b-button>
-          </b-col>
+        </b-col>
       </b-row>
 
       
@@ -103,6 +106,27 @@
 
     </b-container>
 
+
+    <b-modal @ok="modalSaveOk" @cancel="modalEraseCancel" size="xsm" id="modal-save" centered hide-header>
+      <!-- <template v-slot:modal-title>
+        <p style="font-size: 15px;">Testing WiFi Network</p>
+      </template> -->
+      <div class="d-block text-center">
+        <p v-if="!isSaving">Are you sure you want to save WiFi configuration?</p>
+        <div class="text-center">
+          <b-spinner style="width: 3rem; height: 3rem;" v-if="isSaving" type="grow" variant="primary" label="Text Centered"></b-spinner>
+        </div>
+      </div>
+      <template v-slot:modal-footer="{ ok, cancel }">
+        <!-- Emulate built in modal footer ok and cancel button actions -->
+        <b-button size="sm" variant="success" @click="ok()">
+          OK
+        </b-button>
+        <b-button size="sm" variant="danger" @click="cancel()">
+          Cancel
+        </b-button>
+      </template>
+    </b-modal>
 
     <b-modal @ok="modalTestOk" @cancel="modalTestCancel" size="xsm" id="modal-test-wifi" centered hide-header>
       <!-- <template v-slot:modal-title>
@@ -200,6 +224,8 @@ export default {
       isScanning: true,
       isTestingWifi: false,
       isErasing: false,
+      isSaving: false,
+      isSaveOk: false,
       isWifiOk: false,
       isTaskRunning: false,
       isWebSocketAlive: false,
@@ -272,6 +298,12 @@ export default {
           this.isTaskRunning = false;
           this.taskStatus = "WiFi OK";
           break;
+        case "saveOk":
+          this.isSaveOk = jsonData["saveOk"];
+          this.isSaving = false;
+          this.isTaskRunning = false;
+          this.taskStatus = "Save OK";
+          break;
         case "eraseOk":
           this.isWifiOk = jsonData["eraseOk"];
           this.isErasing = false;
@@ -283,6 +315,11 @@ export default {
           this.staticIp = "";
           this.netmask = "";
           this.gateway = "";
+          break;
+        case "startDeviceOk":
+          this.isWifiOk = jsonData["startDeviceOk"];
+          this.isTaskRunning = false;
+          this.taskStatus = "Device started!";
           break;
         case "wifiTestError":
           this.isWifiOk = false;
@@ -329,6 +366,25 @@ export default {
       console.log(ssid);
       this.ssid = ssid;
     },
+    modalSaveOk: function(bvModalEvt) {
+      console.log(bvModalEvt.trigger);      
+      this.$bvModal.show('modal-running-task');
+      this.taskStatus = "Saving to device...";
+      this.isTaskRunning = true;
+      this.isSaving = true;
+      var JsonData = {
+        "deviceConfiguration": {
+          "ssid": this.ssid,
+          "password": this.password,
+          "isStaticIp": this.isStaticIp,
+          "staticIp": this.staticIp,
+          "netmask": this.netmask,
+          "gateway": this.gateway,
+        }
+      }
+      console.log(JsonData);
+      this.$socket.send(JSON.stringify(JsonData));
+    },
     modalTestOk: function(bvModalEvt) {
       console.log(bvModalEvt.trigger);      
       this.$bvModal.show('modal-running-task');
@@ -370,7 +426,18 @@ export default {
       this.$bvModal.show('modal-running-task');
       this.taskStatus = "Starting device...";
       this.isTaskRunning = true;
-      //this.socket.send("startDevice");
+      var JsonData = {
+        "startDevice": {
+          "ssid": this.ssid,
+          "password": this.password,
+          "isStaticIp": this.isStaticIp,
+          "staticIp": this.staticIp,
+          "netmask": this.netmask,
+          "gateway": this.gateway,
+        }
+      }
+      console.log(JsonData);
+      this.$socket.send(JSON.stringify(JsonData));
     },
     modalStartDeviceCancel: function(bvModalEvt) {
       console.log(bvModalEvt.trigger);

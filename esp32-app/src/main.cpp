@@ -14,9 +14,14 @@ void webSocketEvent(uint8_t num, WStype_t type, uint8_t *payload, size_t length)
 void handleNotFound();
 void handleRoot();
 void configureDevice();
+void startConfigWebpage();
 
 const char *wifiSsid = "GiosWifi";
 const char *wifiPassword = "k2g10713tk";
+const char *apSsid = "ESP32 IoT";
+const char *apPassword = "";
+
+uint8_t configButton = 23; 
 
 String ssid;
 String password;
@@ -25,6 +30,7 @@ String staticIp;
 String netmask;
 String gateway;
 bool blankDevice;
+bool keepConfigWegpage;
 
 
 WiFiClient client;
@@ -34,17 +40,36 @@ WebSocketsServer webSocket = WebSocketsServer(9090);
 void setup()
 {
   Serial.begin(115200);
-  delay(100);
+  pinMode(configButton, INPUT);
 
   if (!FFat.begin(true)){
     Serial.println("Couldn't mount the filesystem.");
   }
+
+  //FFat.remove("/deviceConfig.txt");
+
   configureDevice();
 
-  Serial.print("Connecting to ");
-  Serial.println(wifiSsid);
+  // ssid = "";
+  // password = "";
+  // isStaticIp = false;
+  // staticIp = "";
+  // netmask = "";
+  // gateway = "";
+  //blankDevice = true;
 
-  WiFi.begin(wifiSsid, wifiPassword);
+  if(digitalRead(configButton) == LOW || blankDevice == true)
+  {
+    startConfigWebpage();
+  }
+
+  WiFi.disconnect(true);
+  WiFi.mode(WIFI_STA);
+
+  Serial.print("Connecting to ");
+  Serial.println(ssid);
+
+  WiFi.begin(ssid.c_str(), password.c_str());
 
   while (WiFi.status() != WL_CONNECTED)
   {
@@ -59,8 +84,6 @@ void setup()
 
   delay(100);
 
-  webSocket.begin();
-  webSocket.onEvent(webSocketEvent);
   server.on("/", handleRoot);
   server.onNotFound(handleNotFound);
   server.begin();
@@ -68,7 +91,7 @@ void setup()
 
 void loop()
 {
-  webSocket.loop();
+  
 }
 
 void webSocketEvent(uint8_t num, WStype_t type, uint8_t *payload, size_t length)
@@ -152,15 +175,15 @@ void webSocketEvent(uint8_t num, WStype_t type, uint8_t *payload, size_t length)
         webSocket.sendTXT(num, "{\"pong\":true}");
       }
 
-      if(strcmp((const char*)payload, "wifiParameters") == 0)
+      if(strcmp((const char*)payload, "deviceConfiguration") == 0)
       {
         //webSocket.sendTXT(num, "{\"pong\":true}");
-        JsonVariant _ssid = jsonObject["wifiParameters"]["ssid"];
-        JsonVariant _password = jsonObject["wifiParameters"]["password"];
-        JsonVariant _isStaticIp = jsonObject["wifiParameters"]["isStaticIp"];
-        JsonVariant _staticIp = jsonObject["wifiParameters"]["staticIp"];
-        JsonVariant _netmask = jsonObject["wifiParameters"]["netmask"];
-        JsonVariant _gateway = jsonObject["wifiParameters"]["gateway"];
+        JsonVariant _ssid = jsonObject["deviceConfiguration"]["ssid"];
+        JsonVariant _password = jsonObject["deviceConfiguration"]["password"];
+        JsonVariant _isStaticIp = jsonObject["deviceConfiguration"]["isStaticIp"];
+        JsonVariant _staticIp = jsonObject["deviceConfiguration"]["staticIp"];
+        JsonVariant _netmask = jsonObject["deviceConfiguration"]["netmask"];
+        JsonVariant _gateway = jsonObject["deviceConfiguration"]["gateway"];
         ssid = _ssid.as<String>();
         password = _password.as<String>();
         isStaticIp = _isStaticIp.as<bool>();
@@ -183,7 +206,7 @@ void webSocketEvent(uint8_t num, WStype_t type, uint8_t *payload, size_t length)
           Serial.println("File write failed");
         }
         file.close();
-        webSocket.sendTXT(num, "{\"wifiTestOk\":true}");
+        webSocket.sendTXT(num, "{\"saveOk\":true}");
       }
 
       if(strcmp((const char*)payload, "eraseConfig") == 0)
@@ -198,6 +221,15 @@ void webSocketEvent(uint8_t num, WStype_t type, uint8_t *payload, size_t length)
         FFat.remove("/deviceConfig.txt");
         webSocket.sendTXT(num, "{\"eraseOk\":true}");
       }
+
+      if(strcmp((const char*)payload, "startDevice") == 0)
+      {
+        //configureDevice();
+        webSocket.sendTXT(num, "{\"startDeviceOk\":true}");
+        blankDevice = false;
+        keepConfigWegpage = false;
+      }
+
     }
     break;
     case WStype_BIN: 
@@ -227,11 +259,12 @@ void handleNotFound()
 
 void configureDevice()
 {
+  Serial.println("Configuring device...");
   File file = FFat.open("/deviceConfig.txt", "r");
   int len = file.size();
   char buff[len]; 
   if(!file){
-      //Serial.println("Failed to open Wifi file for reading");
+      Serial.println("Failed to open config file, blankDevice true");
       ssid = "";
       password = "";
       isStaticIp = false;
@@ -248,17 +281,53 @@ void configureDevice()
   StaticJsonDocument<512> jsonBuffer;
   deserializeJson(jsonBuffer, buff);
   JsonObject jsonObject = jsonBuffer.as<JsonObject>();
-  JsonVariant _ssid = jsonObject["wifiParameters"]["ssid"];
-  JsonVariant _password = jsonObject["wifiParameters"]["password"];
-  JsonVariant _isStaticIp = jsonObject["wifiParameters"]["isStaticIp"];
-  JsonVariant _staticIp = jsonObject["wifiParameters"]["staticIp"];
-  JsonVariant _netmask = jsonObject["wifiParameters"]["netmask"];
-  JsonVariant _gateway = jsonObject["wifiParameters"]["gateway"];
+  JsonVariant _ssid = jsonObject["deviceConfiguration"]["ssid"];
+  JsonVariant _password = jsonObject["deviceConfiguration"]["password"];
+  JsonVariant _isStaticIp = jsonObject["deviceConfiguration"]["isStaticIp"];
+  JsonVariant _staticIp = jsonObject["deviceConfiguration"]["staticIp"];
+  JsonVariant _netmask = jsonObject["deviceConfiguration"]["netmask"];
+  JsonVariant _gateway = jsonObject["deviceConfiguration"]["gateway"];
   ssid = _ssid.as<String>();
   password = _password.as<String>();
   isStaticIp = _isStaticIp.as<bool>();
   staticIp = _staticIp.as<String>();
   netmask = _netmask.as<String>();
   gateway = _gateway.as<String>();
+
+  //if(ssid == "" || password == "")
+
+
   blankDevice = false;
+
+  Serial.println("------ WIFI ------");
+  Serial.println(ssid);
+  Serial.println(password);
+  Serial.println(isStaticIp);
+  Serial.println(staticIp);
+  Serial.println(netmask);
+  Serial.println(gateway);
+  Serial.println("------------------");
+
+  Serial.println("Configure OK");
+}
+
+void startConfigWebpage()
+{
+  Serial.println("Starting AP for configuration");
+  keepConfigWegpage = true;
+  WiFi.mode(WIFI_AP);
+  WiFi.disconnect();
+  WiFi.softAP(apSsid, apPassword);
+
+  Serial.print("IP: ");
+  Serial.println(WiFi.softAPIP());
+
+  webSocket.begin();
+  webSocket.onEvent(webSocketEvent);
+
+  Serial.println("Starting Websocket loop");
+  while(keepConfigWegpage)
+  {
+    webSocket.loop();
+  }  
 }

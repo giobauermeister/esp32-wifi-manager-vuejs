@@ -13,7 +13,7 @@ Vue.use(BootstrapVue)
 // Optionally install the BootstrapVue icon components plugin
 Vue.use(IconsPlugin)
 
-Vue.use(VueNativeSock, 'ws://192.168.0.11:9090', {
+Vue.use(VueNativeSock, 'ws://192.168.4.1:9090', {
   reconnection: true,
   reconnectionAttempts: 5,
   reconnectionDelay: 2000,
