@@ -21,7 +21,8 @@ const char *wifiPassword = "k2g10713tk";
 const char *apSsid = "ESP32 IoT";
 const char *apPassword = "";
 
-uint8_t configButton = 23; 
+uint8_t configButton = 23;
+uint8_t builtinLed = 5;  
 
 String ssid;
 String password;
@@ -31,7 +32,10 @@ String netmask;
 String gateway;
 bool blankDevice;
 bool keepConfigWegpage;
+//uint8_t restartConfigWebpage = 0;
+uint8_t wifiStatus;
 
+unsigned long connectTimeout;
 
 WiFiClient client;
 WebServer server(80);
@@ -41,6 +45,7 @@ void setup()
 {
   Serial.begin(115200);
   pinMode(configButton, INPUT);
+  pinMode(builtinLed, OUTPUT);
 
   if (!FFat.begin(true)){
     Serial.println("Couldn't mount the filesystem.");
@@ -71,11 +76,29 @@ void setup()
 
   WiFi.begin(ssid.c_str(), password.c_str());
 
-  while (WiFi.status() != WL_CONNECTED)
-  {
-    delay(500);
-    Serial.print(".");
+  connectTimeout = millis() + (15 * 1000);
+  while(true) {
+    wifiStatus = WiFi.status();
+
+    if ((wifiStatus == WL_CONNECTED) || (wifiStatus == WL_NO_SSID_AVAIL) ||
+    (wifiStatus == WL_CONNECT_FAILED) || (millis() >= connectTimeout)) 
+      break;
+
+    delay(100);
   }
+  if(wifiStatus != WL_CONNECTED)
+  {
+    startConfigWebpage();
+  }
+
+  // while (WiFi.status() != WL_CONNECTED)
+  // {
+  //   restartConfigWebpage++;
+  //   delay(1000);
+  //   if(restartConfigWebpage >= 10){
+  //     startConfigWebpage();
+  //   }
+  // }
 
   Serial.println("");
   Serial.println("WiFi connected");
@@ -91,7 +114,10 @@ void setup()
 
 void loop()
 {
-  
+  digitalWrite(builtinLed, HIGH);
+  delay(500);
+  digitalWrite(builtinLed, LOW);
+  delay(500);
 }
 
 void webSocketEvent(uint8_t num, WStype_t type, uint8_t *payload, size_t length)
@@ -206,6 +232,7 @@ void webSocketEvent(uint8_t num, WStype_t type, uint8_t *payload, size_t length)
           Serial.println("File write failed");
         }
         file.close();
+        blankDevice = false;
         webSocket.sendTXT(num, "{\"saveOk\":true}");
       }
 
@@ -217,8 +244,8 @@ void webSocketEvent(uint8_t num, WStype_t type, uint8_t *payload, size_t length)
         staticIp = "";
         netmask = "";
         gateway = "";
-        blankDevice = true;
         FFat.remove("/deviceConfig.txt");
+        blankDevice = true;
         webSocket.sendTXT(num, "{\"eraseOk\":true}");
       }
 
@@ -226,8 +253,53 @@ void webSocketEvent(uint8_t num, WStype_t type, uint8_t *payload, size_t length)
       {
         //configureDevice();
         webSocket.sendTXT(num, "{\"startDeviceOk\":true}");
-        blankDevice = false;
+        //blankDevice = false;
         keepConfigWegpage = false;
+      }
+
+      if(strcmp((const char*)payload, "testWifi") == 0)
+      {
+        if(blankDevice == true) {
+          Serial.print("Cant test blank device\n");
+          webSocket.sendTXT(num, "{\"testWifiStatus\":\"blankdevice\"}");
+          return;
+        }
+        Serial.print("Testing connection to: ");
+        //WiFi.mode(WIFI_AP_STA);
+        Serial.println(ssid);
+        Serial.print("Password ");
+        Serial.println(password);
+        WiFi.disconnect(true);
+        WiFi.begin(ssid.c_str(), password.c_str());
+        connectTimeout = millis() + (20 * 1000);
+        while(true) {
+          wifiStatus = WiFi.status();
+          Serial.printf("(%d).", wifiStatus);
+          if ((wifiStatus == WL_CONNECTED) || (wifiStatus == WL_NO_SSID_AVAIL) ||
+          (wifiStatus == WL_CONNECT_FAILED) || (millis() >= connectTimeout)) 
+            break;
+          delay(100);
+        }
+        switch (wifiStatus)
+        {
+          case WL_NO_SSID_AVAIL:
+            Serial.print("WL_NO_SSID_AVAIL\n");
+            webSocket.sendTXT(num, "{\"testWifiStatus\":\"WL_NO_SSID_AVAIL\"}");
+            break;
+          case WL_CONNECT_FAILED:
+            Serial.print("WL_CONNECT_FAILED\n");
+            webSocket.sendTXT(num, "{\"testWifiStatus\":\"WL_CONNECT_FAILED\"}");
+            break;
+          case WL_CONNECTED:
+            Serial.print("WL_CONNECTED\n");
+            webSocket.sendTXT(num, "{\"testWifiStatus\":\"WL_CONNECTED\"}");
+            break;        
+          default:
+            Serial.print("default\n");
+            webSocket.sendTXT(num, "{\"testWifiStatus\":\"error\"}");
+            break;
+        }
+        WiFi.disconnect();
       }
 
     }
@@ -294,8 +366,7 @@ void configureDevice()
   netmask = _netmask.as<String>();
   gateway = _gateway.as<String>();
 
-  //if(ssid == "" || password == "")
-
+  //if(ssid == "" || (isStaticIp == true && (staticIp == "" || netmask == "" || gateway == "")))
 
   blankDevice = false;
 
@@ -315,8 +386,8 @@ void startConfigWebpage()
 {
   Serial.println("Starting AP for configuration");
   keepConfigWegpage = true;
-  WiFi.mode(WIFI_AP);
-  WiFi.disconnect();
+  WiFi.mode(WIFI_AP_STA);
+  //WiFi.disconnect();
   WiFi.softAP(apSsid, apPassword);
 
   Serial.print("IP: ");

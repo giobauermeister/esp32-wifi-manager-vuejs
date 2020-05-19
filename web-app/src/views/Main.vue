@@ -256,7 +256,7 @@ export default {
       console.log("Server: " + e);
       //this.$socket.send('getMacAddress');
       this.isDeviceConnected = false;
-      this.macAddress = "";
+      //this.macAddress = "";
       this.isWebSocketAlive = false;       
     }
     //------ WEBSOCKET ONMESSAGE EVENTS ------------
@@ -286,17 +286,53 @@ export default {
           this.isWebSocketAlive = true;
           this.isDeviceConnected = true;
           break;
-        case "macAddress":
-          this.isDeviceConnected = true;
-          this.isWebSocketAlive = true;
-          this.lastPongTime = Date.now();
-          this.macAddress = jsonData["macAddress"];          
-          break;
-        case "wifiTestOk":
-          this.isWifiOk = jsonData["wifiTestOk"];
-          this.isTestingWifi = false;
-          this.isTaskRunning = false;
-          this.taskStatus = "WiFi OK";
+        // case "macAddress":
+        //   this.isDeviceConnected = true;
+        //   this.isWebSocketAlive = true;
+        //   this.lastPongTime = Date.now();
+        //   this.macAddress = jsonData["macAddress"];          
+        //   break;
+        // case "wifiTestOk":
+        //   this.isWifiOk = jsonData["wifiTestOk"];
+        //   this.isTestingWifi = false;
+        //   this.isTaskRunning = false;
+        //   this.taskStatus = "WiFi OK";
+        //   break;
+        case "testWifiStatus":
+          switch (jsonData["testWifiStatus"]) {
+            case "WL_CONNECTED":
+              this.isTestingWifi = false;
+              this.isTaskRunning = false;
+              this.isWifiOk = true;
+              this.taskStatus = "WiFi Ok! " + "[" + jsonData["testWifiStatus"] + "]";
+              break;
+            case "blankdevice":
+              this.isWifiOk = false;
+              this.isTestingWifi = false;
+              this.isTaskRunning = false;
+              this.taskStatus = "Connection failed. Device not configured";
+              break;
+            case "error":
+              this.isWifiOk = false;
+              this.isTestingWifi = false;
+              this.isTaskRunning = false;
+              this.taskStatus = "Connection failed.";
+              break;
+            case "WL_CONNECT_FAILED":
+              this.isWifiOk = false;
+              this.isTestingWifi = false;
+              this.isTaskRunning = false;
+              this.taskStatus = "Connection failed " + "[" + jsonData["testWifiStatus"] + "]";
+              break;
+            case "WL_NO_SSID_AVAIL":
+              this.isWifiOk = false;
+              this.isTestingWifi = false;
+              this.isTaskRunning = false;
+              this.taskStatus = "Could not find WiFi " + "[" + jsonData["testWifiStatus"] + "]";
+              break;          
+            default:
+              break;
+          }          
           break;
         case "saveOk":
           this.isSaveOk = jsonData["saveOk"];
@@ -321,12 +357,12 @@ export default {
           this.isTaskRunning = false;
           this.taskStatus = "Device started!";
           break;
-        case "wifiTestError":
-          this.isWifiOk = false;
-          this.isTestingWifi = false;
-          this.isTaskRunning = false;
-          this.taskStatus = jsonData["error"];
-          break;
+        // case "wifiTestError":
+        //   this.isWifiOk = false;
+        //   this.isTestingWifi = false;
+        //   this.isTaskRunning = false;
+        //   this.taskStatus = jsonData["error"];
+        //   break;
         case "eraseDataOk":
           //this.is = true;
           this.isTaskRunning = false;
@@ -334,6 +370,7 @@ export default {
           break;
         case "pong":
           this.isWebSocketAlive = jsonData["pong"];
+          this.isDeviceConnected = true;
           this.lastPongTime = Date.now();
           break;
       }
@@ -351,7 +388,7 @@ export default {
         console.log("LAST PONG TIME GREATER");
         this.isDeviceConnected = false;
         this.isWebSocketAlive = false;
-        this.macAddress = "";
+        //this.macAddress = "";
       }     
     }, 200)
   },
@@ -390,19 +427,8 @@ export default {
       this.$bvModal.show('modal-running-task');
       this.taskStatus = "Testing WiFi connection...";
       this.isTaskRunning = true;
-      this.isTestingWifi = true;
-      var JsonData = {
-        "wifiParameters": {
-          "ssid": this.ssid,
-          "password": this.password,
-          "isStaticIp": this.isStaticIp,
-          "staticIp": this.staticIp,
-          "netmask": this.netmask,
-          "gateway": this.gateway,
-        }
-      }
-      console.log(JsonData);
-      this.$socket.send(JSON.stringify(JsonData));
+      this.isTestingWifi = true; 
+      this.$socket.send("testWifi");
     },
     modalTestCancel: function(bvModalEvt) {
       console.log(bvModalEvt.trigger);
