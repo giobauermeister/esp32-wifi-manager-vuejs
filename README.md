@@ -1,24 +1,8 @@
-# esp32-wifi-manager
+## ESP32 WiFi Manager with Vuejs
 
-## Project setup
-```
-npm install
-```
+<img src="https://raw.githubusercontent.com/giobauermeister/esp32-wifi-manager-vuejs/master/repo-image1.png" width="556" height="334" href="">
 
-### Compiles and hot-reloads for development
-```
-npm run serve
-```
+Soon instructions to download and build the project. If you are curious, feel free to download and explore the repository.
+You can make questions using the issues tab.
 
-### Compiles and minifies for production
-```
-npm run build
-```
-
-### Lints and fixes files
-```
-npm run lint
-```
-
-### Customize configuration
-See [Configuration Reference](https://cli.vuejs.org/config/).
+<img src="https://raw.githubusercontent.com/giobauermeister/esp32-wifi-manager-vuejs/master/repo-image2.png" width="556" height="334" href="">
