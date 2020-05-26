@@ -1,0 +1,98 @@
+[v-cloak] {
+  display: none!important;
+}
+body {
+  /* background-color: #42b983!important; */
+  /* background-color: #EAEAEA!important; */
+  background-color: #1b2943!important;
+  height: 100%;
+  margin: 0;
+}
+#app {
+  font-family: Avenir, Helvetica, Arial, sans-serif;
+  /* font-family: "Jost"; */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-align: center;
+  color: #2c3e50;
+}
+.input-ssid {
+  padding-bottom: 15px;
+  max-width: 21rem;
+  margin: 0 auto;
+}
+.input-password {
+  padding-bottom: 10px;
+  max-width: 21rem;
+  margin: 0 auto;
+}
+.input-ipaddress {
+  padding-bottom: 15px;
+  max-width: 21rem;
+  margin: 0 auto;
+}
+.input-netmask {
+  padding-bottom: 15px;
+  max-width: 21rem;
+  margin: 0 auto;
+}
+.input-gateway {
+  padding-bottom: 15px;
+  max-width: 21rem;
+  margin: 0 auto;
+}
+.fullscreen {
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  right: 0;
+  overflow: auto;
+  background: lime; /* Just to visualize the extent */
+}
+.main-header {
+  font-variation-settings: "wght" 200, "ital" 1;
+  color: black;
+}
+.card-container {
+  max-width: 26rem;
+  height: 30rem;
+  color: #dbe1e7;
+  background-color: #2f4564;
+  margin-top: 5rem;
+}
+.card-body {
+  padding-top: 8px!important;
+}
+.main-card-header {
+  background-color: #223555;
+  font-variation-settings: "wght" 400;
+  font-size: 20px;
+}
+.fade-enter-active, .fade-leave-active {
+  transition: opacity .3s;
+}
+.fade-enter, .fade-leave-to /* .fade-leave-active em versões anteriores a 2.1.8 */ {
+  opacity: 0;
+}
+.led-box {
+  height: 30px;
+  width: 25%;
+  margin: 10px 0;
+  float: left;
+}
+.led-green {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background-color: rgb(119, 136, 84);
+  box-shadow: rgba(163, 44, 44, 0.2) 0 -1px 7px 1px, inset #476902 0 -1px 9px, rgb(41, 77, 0) 0 1px 6px;
+}
+.led-on {
+  background-color: #ABFF00;
+  box-shadow: rgba(0, 0, 0, 0.2) 0 -1px 7px 1px, inset #304701 0 -1px 9px, #89FF00 0 2px 12px;
+}
+div.modal .modal-dialog.modal-xsm {
+  max-width: 300px!important;
+  margin: auto;
+}

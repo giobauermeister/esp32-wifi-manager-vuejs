@@ -63,6 +63,16 @@ void setup()
   // gateway = "";
   //blankDevice = true;
 
+  WiFi.disconnect(true);
+  WiFi.mode(WIFI_AP_STA);
+
+  webSocket.begin();
+  webSocket.onEvent(webSocketEvent);
+
+  server.on("/", handleRoot);
+  server.onNotFound(handleNotFound);
+  server.begin();
+
   if(digitalRead(configButton) == LOW || blankDevice == true)
   {
     startConfigWebpage();
@@ -74,7 +84,21 @@ void setup()
   Serial.print("Connecting to ");
   Serial.println(ssid);
 
-  WiFi.begin(ssid.c_str(), password.c_str());
+  if(isStaticIp == true) {
+    IPAddress _ip;
+    IPAddress _gateway;
+    IPAddress _netmask;
+    _ip.fromString(staticIp);
+    _gateway.fromString(gateway);
+    _netmask.fromString(netmask);
+    WiFi.config(_ip, _gateway, _netmask);
+  }
+
+  if(password == "") {
+    WiFi.begin(ssid.c_str());
+  } else {
+    WiFi.begin(ssid.c_str(), password.c_str());
+  }
 
   connectTimeout = millis() + (15 * 1000);
   while(true) {
@@ -107,9 +131,9 @@ void setup()
 
   delay(100);
 
-  server.on("/", handleRoot);
-  server.onNotFound(handleNotFound);
-  server.begin();
+  // server.on("/", handleRoot);
+  // server.onNotFound(handleNotFound);
+  // server.begin();
 }
 
 void loop()
@@ -318,10 +342,12 @@ void webSocketEvent(uint8_t num, WStype_t type, uint8_t *payload, size_t length)
 
 void handleRoot()
 {
-  //Serial.println("HandleRoot");
+  Serial.println("HandleRoot");
+  SPIFFS.begin();
   File file = SPIFFS.open("/index.html.gz", "r");
   server.streamFile(file, "text/html");
   file.close();
+  SPIFFS.end();
 }
 
 void handleNotFound()
@@ -393,12 +419,10 @@ void startConfigWebpage()
   Serial.print("IP: ");
   Serial.println(WiFi.softAPIP());
 
-  webSocket.begin();
-  webSocket.onEvent(webSocketEvent);
-
   Serial.println("Starting Websocket loop");
   while(keepConfigWegpage)
   {
     webSocket.loop();
+    server.handleClient();
   }  
 }
