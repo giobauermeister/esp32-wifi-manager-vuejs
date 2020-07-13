@@ -16,8 +16,8 @@ void handleRoot();
 void configureDevice();
 void startConfigWebpage();
 
-const char *wifiSsid = "GiosWifi";
-const char *wifiPassword = "k2g10713tk";
+const char *wifiSsid = "xxxx";
+const char *wifiPassword = "xxxx";
 const char *apSsid = "ESP32 IoT";
 const char *apPassword = "";
 
