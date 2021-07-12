@@ -1,12 +1,19 @@
 #include <Arduino.h>
 #include <ArduinoJson.h>
 #include <WebSocketsServer.h>
-//#include <FS.h>
+
+#ifdef ESP8266
+#include <LittleFS.h>
+#include <ESP8266WebServer.h>
+#include <ESP8266WiFi.h>
+#else
 #include <SPIFFS.h>
 #include <WebServer.h>
-#include <WiFi.h>
-#include <WiFiClient.h>
 #include <FFat.h>
+#include <WiFi.h>
+#endif
+
+#include <WiFiClient.h>
 
 #define USE_SERIAL Serial
 
@@ -18,7 +25,13 @@ void startConfigWebpage();
 
 const char *wifiSsid = "xxxx";
 const char *wifiPassword = "xxxx";
+
+#ifdef ESP8266
+const char *apSsid = "ESP8266 IoT";
+#else
 const char *apSsid = "ESP32 IoT";
+#endif
+
 const char *apPassword = "";
 
 uint8_t configButton = 23;
@@ -38,7 +51,13 @@ uint8_t wifiStatus;
 unsigned long connectTimeout;
 
 WiFiClient client;
+
+#ifdef ESP8266
+ESP8266WebServer server(80);
+#else
 WebServer server(80);
+#endif
+
 WebSocketsServer webSocket = WebSocketsServer(9090);
 
 void setup()
@@ -47,12 +66,21 @@ void setup()
   pinMode(configButton, INPUT);
   pinMode(builtinLed, OUTPUT);
 
+#ifdef ESP8266
+  if (!LittleFS.begin()){
+#else
   if (!FFat.begin(true)){
+#endif    
     Serial.println("Couldn't mount the filesystem.");
   }
 
-  //FFat.remove("/deviceConfig.txt");
-
+/*
+#ifdef ESP8266
+  LittleFS.remove("/deviceConfig.txt");
+#else
+  FFat.remove("/deviceConfig.txt");
+#endif
+*/
   configureDevice();
 
   // ssid = "";
@@ -244,7 +272,13 @@ void webSocketEvent(uint8_t num, WStype_t type, uint8_t *payload, size_t length)
         int len = measureJson(jsonObject);
         char buff[len];
         serializeJson(jsonObject, buff, len + 1);
+
+#ifdef ESP8266
+        File file = LittleFS.open("/deviceConfig.txt", "w");
+#else
         File file = FFat.open("/deviceConfig.txt", "w");
+#endif        
+
         if(!file) {
           Serial.println("Wifi file write error");
           return;
@@ -268,7 +302,12 @@ void webSocketEvent(uint8_t num, WStype_t type, uint8_t *payload, size_t length)
         staticIp = "";
         netmask = "";
         gateway = "";
+
+#ifdef ESP8266
+        LittleFS.remove("/deviceConfig.txt");
+#else
         FFat.remove("/deviceConfig.txt");
+#endif
         blankDevice = true;
         webSocket.sendTXT(num, "{\"eraseOk\":true}");
       }
@@ -343,11 +382,20 @@ void webSocketEvent(uint8_t num, WStype_t type, uint8_t *payload, size_t length)
 void handleRoot()
 {
   Serial.println("HandleRoot");
+#ifdef ESP8266
+  LittleFS.begin();
+  File file = LittleFS.open("/index.html.gz", "r");
+#else
   SPIFFS.begin();
   File file = SPIFFS.open("/index.html.gz", "r");
+ #endif 
   server.streamFile(file, "text/html");
   file.close();
+ #ifdef ESP8266 
+  LittleFS.end();
+ #else 
   SPIFFS.end();
+ #endif 
 }
 
 void handleNotFound()
@@ -358,7 +406,13 @@ void handleNotFound()
 void configureDevice()
 {
   Serial.println("Configuring device...");
+
+#ifdef ESP8266
+  File file = LittleFS.open("/deviceConfig.txt", "r");
+#else
   File file = FFat.open("/deviceConfig.txt", "r");
+#endif
+
   int len = file.size();
   char buff[len]; 
   if(!file){
