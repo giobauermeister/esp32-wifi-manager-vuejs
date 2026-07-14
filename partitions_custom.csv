@@ -4,4 +4,5 @@ otadata,  data, ota,     0xe000,  0x2000,
 app0,     app,  ota_0,   0x10000, 0x140000,
 app1,     app,  ota_1,   0x150000,0x140000,
 spiffs,   data, spiffs,           ,0x50000,
-ffat,     data, fat,              ,528K
+# Use the numeric FAT subtype so PlatformIO's buildfs selects SPIFFS, not FFat.
+ffat,     data, 0x81,             ,528K

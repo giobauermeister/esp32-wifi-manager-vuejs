@@ -15,14 +15,17 @@ void handleNotFound();
 void handleRoot();
 void configureDevice();
 void startConfigWebpage();
+void processNetworkScan();
 
 const char *wifiSsid = "xxxx";
 const char *wifiPassword = "xxxx";
-const char *apSsid = "ESP32 IoT";
+const char *apSsid = "ESP32 WiFiManagerVue";
 const char *apPassword = "";
 
-uint8_t configButton = 23;
-uint8_t builtinLed = 5;  
+// uint8_t configButton = 23;
+uint8_t configButton = 35;
+// uint8_t builtinLed = 5;
+uint8_t builtinLed = 4; 
 
 String ssid;
 String password;
@@ -34,6 +37,8 @@ bool blankDevice;
 bool keepConfigWegpage;
 //uint8_t restartConfigWebpage = 0;
 uint8_t wifiStatus;
+bool networkScanInProgress = false;
+uint8_t networkScanClient = 0;
 
 unsigned long connectTimeout;
 
@@ -61,7 +66,7 @@ void setup()
   // staticIp = "";
   // netmask = "";
   // gateway = "";
-  //blankDevice = true;
+  // blankDevice = true;
 
   WiFi.disconnect(true);
   WiFi.mode(WIFI_AP_STA);
@@ -157,7 +162,7 @@ void webSocketEvent(uint8_t num, WStype_t type, uint8_t *payload, size_t length)
       USE_SERIAL.printf("[%u] Connected from %d.%d.%d.%d url: %s\n", num, ip[0], ip[1], ip[2], ip[3], payload);
       size_t len;
 
-      DynamicJsonDocument deviceInfo(JSON_ARRAY_SIZE(500));
+      JsonDocument deviceInfo;
       deviceInfo["deviceInfo"]["macAddress"] = WiFi.macAddress();
       deviceInfo["deviceInfo"]["ssid"] = ssid;
       deviceInfo["deviceInfo"]["password"] = password;
@@ -167,7 +172,7 @@ void webSocketEvent(uint8_t num, WStype_t type, uint8_t *payload, size_t length)
       deviceInfo["deviceInfo"]["gateway"] = gateway;
 
       len = measureJson(deviceInfo);
-      char jsonToSend[len];
+      char jsonToSend[len + 1];
       serializeJson(deviceInfo, Serial);
       serializeJson(deviceInfo, jsonToSend, len + 1);
       webSocket.sendTXT(num, jsonToSend, strlen(jsonToSend));
@@ -178,46 +183,19 @@ void webSocketEvent(uint8_t num, WStype_t type, uint8_t *payload, size_t length)
     {
       USE_SERIAL.printf("[%u] get Text: %s\n", num, payload);
       
-      StaticJsonDocument<512> jsonBuffer;
+      JsonDocument jsonBuffer;
       deserializeJson(jsonBuffer, payload);
       JsonObject jsonObject = jsonBuffer.as<JsonObject>();
 
       if(strcmp((const char*)payload, "scanNetworks") == 0)
       {
-        uint8_t n;
-        size_t len;
-        DynamicJsonDocument networksList(JSON_ARRAY_SIZE(50));
-        Serial.println("scan start");
-        n = WiFi.scanNetworks();
-        if (n == 0)
-        {
-          Serial.println("no networks found");
+        if(!networkScanInProgress) {
+          Serial.println("Starting asynchronous network scan");
+          WiFi.scanDelete();
+          networkScanClient = num;
+          networkScanInProgress = true;
+          WiFi.scanNetworks(true);
         }
-        else
-        {
-          Serial.print(n);
-          Serial.println(" networks found");
-          for (uint8_t i = 0; i < n; ++i)
-          {
-            // Pruint8_t SSID and RSSI for each network found
-            Serial.print(i + 1);
-            Serial.print(": ");
-            Serial.print(WiFi.SSID(i));
-            Serial.print(" (");
-            Serial.print(WiFi.RSSI(i));
-            Serial.println(")");
-            //networks[i] = WiFi.SSID(i);
-            networksList["ssidArray"].add(WiFi.SSID(i));
-            delay(10);
-          }
-        }
-        len = measureJson(networksList);
-        char networksArray[len];
-        serializeJson(networksList, Serial);
-        //Serial.println("");
-        //Serial.println(len);
-        serializeJson(networksList, networksArray, len + 1);
-        webSocket.sendTXT(num, networksArray, strlen(networksArray));
       }
 
       if(strcmp((const char*)payload, "ping") == 0)
@@ -225,7 +203,7 @@ void webSocketEvent(uint8_t num, WStype_t type, uint8_t *payload, size_t length)
         webSocket.sendTXT(num, "{\"pong\":true}");
       }
 
-      if(strcmp((const char*)payload, "deviceConfiguration") == 0)
+      if(jsonObject["deviceConfiguration"].is<JsonObject>())
       {
         //webSocket.sendTXT(num, "{\"pong\":true}");
         JsonVariant _ssid = jsonObject["deviceConfiguration"]["ssid"];
@@ -242,7 +220,7 @@ void webSocketEvent(uint8_t num, WStype_t type, uint8_t *payload, size_t length)
         gateway = _gateway.as<String>();
 
         int len = measureJson(jsonObject);
-        char buff[len];
+        char buff[len + 1];
         serializeJson(jsonObject, buff, len + 1);
         File file = FFat.open("/deviceConfig.txt", "w");
         if(!file) {
@@ -273,7 +251,7 @@ void webSocketEvent(uint8_t num, WStype_t type, uint8_t *payload, size_t length)
         webSocket.sendTXT(num, "{\"eraseOk\":true}");
       }
 
-      if(strcmp((const char*)payload, "startDevice") == 0)
+      if(jsonObject["startDevice"].is<JsonObject>())
       {
         //configureDevice();
         webSocket.sendTXT(num, "{\"startDeviceOk\":true}");
@@ -343,8 +321,18 @@ void webSocketEvent(uint8_t num, WStype_t type, uint8_t *payload, size_t length)
 void handleRoot()
 {
   Serial.println("HandleRoot");
-  SPIFFS.begin();
+  if(!SPIFFS.begin(false)) {
+    server.send(500, "text/plain", "Unable to mount SPIFFS");
+    return;
+  }
   File file = SPIFFS.open("/index.html.gz", "r");
+  if(!file) {
+    server.send(404, "text/plain", "Web application not found");
+    SPIFFS.end();
+    return;
+  }
+  server.sendHeader("Content-Encoding", "gzip");
+  server.sendHeader("Cache-Control", "no-cache");
   server.streamFile(file, "text/html");
   file.close();
   SPIFFS.end();
@@ -358,9 +346,18 @@ void handleNotFound()
 void configureDevice()
 {
   Serial.println("Configuring device...");
+  if(!FFat.exists("/deviceConfig.txt")) {
+      Serial.println("No saved configuration, blankDevice true");
+      ssid = "";
+      password = "";
+      isStaticIp = false;
+      staticIp = "";
+      netmask = "";
+      gateway = "";
+      blankDevice = true;
+      return;
+  }
   File file = FFat.open("/deviceConfig.txt", "r");
-  int len = file.size();
-  char buff[len]; 
   if(!file){
       Serial.println("Failed to open config file, blankDevice true");
       ssid = "";
@@ -372,11 +369,14 @@ void configureDevice()
       blankDevice = true;
       return;
   }
+  int len = file.size();
+  char buff[len + 1];
   while(file.available()){
     file.readBytes(buff, len);
   }
+  buff[len] = '\0';
   file.close();
-  StaticJsonDocument<512> jsonBuffer;
+  JsonDocument jsonBuffer;
   deserializeJson(jsonBuffer, buff);
   JsonObject jsonObject = jsonBuffer.as<JsonObject>();
   JsonVariant _ssid = jsonObject["deviceConfiguration"]["ssid"];
@@ -424,5 +424,34 @@ void startConfigWebpage()
   {
     webSocket.loop();
     server.handleClient();
+    processNetworkScan();
   }  
+}
+
+void processNetworkScan()
+{
+  if(!networkScanInProgress) return;
+
+  int16_t result = WiFi.scanComplete();
+  if(result == WIFI_SCAN_RUNNING) return;
+
+  JsonDocument networksList;
+  JsonArray ssidArray = networksList["ssidArray"].to<JsonArray>();
+
+  if(result == WIFI_SCAN_FAILED) {
+    Serial.println("Network scan failed");
+  } else {
+    Serial.printf("%d networks found\n", result);
+    for(int16_t i = 0; i < result; ++i) {
+      Serial.printf("%d: %s (%d)\n", i + 1, WiFi.SSID(i).c_str(), WiFi.RSSI(i));
+      ssidArray.add(WiFi.SSID(i));
+    }
+  }
+
+  String response;
+  serializeJson(networksList, response);
+  webSocket.sendTXT(networkScanClient, response);
+
+  WiFi.scanDelete();
+  networkScanInProgress = false;
 }
