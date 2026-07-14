@@ -1,0 +1,18 @@
+{
+  "name": "esp32-wifi-manager-web",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0",
+    "dev:device": "VITE_USE_MOCK=false vite --host 0.0.0.0",
+    "build": "vite build && node scripts/write-gzip.mjs",
+    "preview": "vite preview --host 0.0.0.0"
+  },
+  "dependencies": {
+    "petite-vue": "^0.4.1"
+  },
+  "devDependencies": {
+    "vite": "^6.1.0",
+    "vite-plugin-singlefile": "^2.3.0"
+  }
+}
