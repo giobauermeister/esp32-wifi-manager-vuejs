@@ -1,12 +1,22 @@
 #include <Arduino.h>
 #include <ArduinoJson.h>
 #include <WebSocketsServer.h>
-//#include <FS.h>
-#include <SPIFFS.h>
-#include <WebServer.h>
-#include <WiFi.h>
-#include <WiFiClient.h>
-#include <FFat.h>
+
+#ifdef ESP8266
+  #include <LittleFS.h>
+  #include <ESP8266WebServer.h>
+  #include <ESP8266WiFi.h>
+  #define CONFIG_FS LittleFS
+  #define WEB_FS LittleFS
+#else
+  #include <FFat.h>
+  #include <SPIFFS.h>
+  #include <WebServer.h>
+  #include <WiFi.h>
+  #include <WiFiClient.h>
+  #define CONFIG_FS FFat
+  #define WEB_FS SPIFFS
+#endif
 
 #define USE_SERIAL Serial
 
@@ -16,16 +26,24 @@ void handleRoot();
 void configureDevice();
 void startConfigWebpage();
 void processNetworkScan();
+void mountFilesystems();
 
 const char *wifiSsid = "xxxx";
 const char *wifiPassword = "xxxx";
+#ifdef ESP8266
+const char *apSsid = "ESP8266 WiFiManagerVue";
+#else
 const char *apSsid = "ESP32 WiFiManagerVue";
+#endif
 const char *apPassword = "";
 
-// uint8_t configButton = 23;
-uint8_t configButton = 35;
-// uint8_t builtinLed = 5;
-uint8_t builtinLed = 4; 
+#ifdef ESP8266
+const uint8_t configButton = D5;
+const uint8_t builtinLed = LED_BUILTIN;
+#else
+const uint8_t configButton = 35;
+const uint8_t builtinLed = 4;
+#endif
 
 String ssid;
 String password;
@@ -39,24 +57,32 @@ bool keepConfigWegpage;
 uint8_t wifiStatus;
 bool networkScanInProgress = false;
 uint8_t networkScanClient = 0;
+bool configFilesystemReady = false;
+bool webFilesystemReady = false;
 
 unsigned long connectTimeout;
 
 WiFiClient client;
+#ifdef ESP8266
+ESP8266WebServer server(80);
+#else
 WebServer server(80);
+#endif
 WebSocketsServer webSocket = WebSocketsServer(9090);
 
 void setup()
 {
   Serial.begin(115200);
+#ifdef ESP8266
+  pinMode(configButton, INPUT_PULLUP);
+#else
   pinMode(configButton, INPUT);
+#endif
   pinMode(builtinLed, OUTPUT);
 
-  if (!FFat.begin(true)){
-    Serial.println("Couldn't mount the filesystem.");
-  }
+  mountFilesystems();
 
-  //FFat.remove("/deviceConfig.txt");
+  //CONFIG_FS.remove("/deviceConfig.txt");
 
   configureDevice();
 
@@ -222,7 +248,12 @@ void webSocketEvent(uint8_t num, WStype_t type, uint8_t *payload, size_t length)
         int len = measureJson(jsonObject);
         char buff[len + 1];
         serializeJson(jsonObject, buff, len + 1);
-        File file = FFat.open("/deviceConfig.txt", "w");
+        if(!configFilesystemReady) {
+          Serial.println("Configuration filesystem is unavailable");
+          webSocket.sendTXT(num, "{\"saveOk\":false}");
+          return;
+        }
+        File file = CONFIG_FS.open("/deviceConfig.txt", "w");
         if(!file) {
           Serial.println("Wifi file write error");
           return;
@@ -246,7 +277,9 @@ void webSocketEvent(uint8_t num, WStype_t type, uint8_t *payload, size_t length)
         staticIp = "";
         netmask = "";
         gateway = "";
-        FFat.remove("/deviceConfig.txt");
+        if(configFilesystemReady) {
+          CONFIG_FS.remove("/deviceConfig.txt");
+        }
         blankDevice = true;
         webSocket.sendTXT(num, "{\"eraseOk\":true}");
       }
@@ -321,21 +354,18 @@ void webSocketEvent(uint8_t num, WStype_t type, uint8_t *payload, size_t length)
 void handleRoot()
 {
   Serial.println("HandleRoot");
-  if(!SPIFFS.begin(false)) {
-    server.send(500, "text/plain", "Unable to mount SPIFFS");
+  if(!webFilesystemReady) {
+    server.send(500, "text/plain", "Web filesystem is unavailable");
     return;
   }
-  File file = SPIFFS.open("/index.html.gz", "r");
+  File file = WEB_FS.open("/index.html.gz", "r");
   if(!file) {
     server.send(404, "text/plain", "Web application not found");
-    SPIFFS.end();
     return;
   }
-  server.sendHeader("Content-Encoding", "gzip");
   server.sendHeader("Cache-Control", "no-cache");
   server.streamFile(file, "text/html");
   file.close();
-  SPIFFS.end();
 }
 
 void handleNotFound()
@@ -346,7 +376,7 @@ void handleNotFound()
 void configureDevice()
 {
   Serial.println("Configuring device...");
-  if(!FFat.exists("/deviceConfig.txt")) {
+  if(!configFilesystemReady || !CONFIG_FS.exists("/deviceConfig.txt")) {
       Serial.println("No saved configuration, blankDevice true");
       ssid = "";
       password = "";
@@ -357,7 +387,7 @@ void configureDevice()
       blankDevice = true;
       return;
   }
-  File file = FFat.open("/deviceConfig.txt", "r");
+  File file = CONFIG_FS.open("/deviceConfig.txt", "r");
   if(!file){
       Serial.println("Failed to open config file, blankDevice true");
       ssid = "";
@@ -406,6 +436,26 @@ void configureDevice()
   Serial.println("------------------");
 
   Serial.println("Configure OK");
+}
+
+void mountFilesystems()
+{
+#ifdef ESP8266
+  configFilesystemReady = LittleFS.begin();
+  webFilesystemReady = configFilesystemReady;
+  if(!configFilesystemReady) {
+    Serial.println("Couldn't mount LittleFS");
+  }
+#else
+  configFilesystemReady = FFat.begin(true);
+  webFilesystemReady = SPIFFS.begin(false);
+  if(!configFilesystemReady) {
+    Serial.println("Couldn't mount FFat");
+  }
+  if(!webFilesystemReady) {
+    Serial.println("Couldn't mount SPIFFS");
+  }
+#endif
 }
 
 void startConfigWebpage()
